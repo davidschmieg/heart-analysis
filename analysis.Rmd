@@ -1,7 +1,7 @@
 ---
-title: "Title of Analysis Goes Here"
-author: "Your Name (netid@illinois.edu)"
-date: "Insert Date Here"
+title: "Heart Disease Analysis"
+author: "David Schmieg (schmieg2@illinois.edu)"
+date: "November 11th 2020"
 output:
   html_document: 
     theme: default
@@ -25,42 +25,192 @@ hd = readr::read_csv("data/hd.csv")
 
 ## Abstract
 
-> Abstract text goes here.
+Heart disease analysis may be useful for someone who has a family history of heart problems. I used existing data to create a model that uses specific features and may be used to predict the presence of heart disease. I found that this model is somewhat accurate. Ultimately, the model can perhaps say if one should seek a cardiologist and professional assistance, or if that's not necessary while still being vigilant in case the model is not correct.
 
 ***
 
 ## Introduction
 
-Write your introduction here.
+Heart disease analysis could be useful for someone who is transitioning into adulthood. This analysis needs to be done in order to determine what variables are correlated to someone having heart disease. Some variables could be more influential than others, so it's important to figure out what variables could greatly contribute to the presence of heart disease, and which variables one should not worry too much about. The goal of this analysis to use some pre-existing data from four hospitals, and create a dependable model using that data to predict if someone has a any sign of heart disease. 
+
+My mother's side of the family has a history of heart disease. One of my grandfathers died due to climbing up a stairwell with heart problems. For me, this analysis is important because in my opinion, heart disease can be related to whether or not one's family has had a history of heart complications. As I transition to adulthood, knowing what features that may contribute to problems related to heart disease, may help me understand how I should go about my lifestyle in order to keep my heart as healthy as possible.
 
 ***
 
 ## Methods
 
-Describe the methods used in this section.
+First, I read in the given data to test-train split it. Then, I looked over the data to see if any of the numerical vfeatures needed to changed to factors. Some features such as sex (make or female) needed to changed to factor variables.
+
+```{r}
+# load packages
+library("tidyverse")
+library("caret")
+library("rpart")
+library("rpart.plot")
+
+# read in data
+hd = read_csv("data/hd.csv")
+
+# test train split the data
+set.seed(42)
+trn_idx = createDataPartition(hd$num, p = 0.80, list = TRUE)
+hd_trn = hd[trn_idx$Resample1, ]
+hd_tst = hd[-trn_idx$Resample1, ]
+
+#coerce character variables to be factors
+hd_trn$num = factor(hd_trn$num)
+hd_trn$location = factor(hd_trn$location)
+hd_trn$cp = factor(hd_trn$cp)
+hd_trn$sex = factor(hd_trn$sex)
+hd_trn$fbs = factor(hd_trn$fbs)
+hd_trn$restecg = factor(hd_trn$restecg)
+hd_trn$exang = factor(hd_trn$exang)
+```
+Next, I noticed that some entries for the feature, cholesterol, were zero. It's impossible to have zero cholesterol, so I changed those entries to NA values. Then I checked the proportion of NA values for each feature, and made a new dataset to where no features that had more than 30% of its values being NA, be in the new dataset.
+
+```{r}
+#additional feature engineering
+hd_trn[which(hd_trn$chol == 0), ]$chol = NA
+
+# function to determine proportion of NAs in a vector
+na_prop = function(x) {
+  mean(is.na(x))
+}
+
+# check proportion of NAs in each column
+sapply(hd_trn, na_prop)
+
+# create training dataset without columns containing more than 33% NAs
+hd_trn = hd_trn[, !sapply(hd_trn, na_prop) > 0.30]
+
+#look at the data
+skimr::skim(hd_trn)
+
+#starting explanatory analysis
+plot(chol ~ age, data = hd_trn, pch = 20, col = hd_trn$num)
+grid()
+```
+
+Next, I decided to temporarily remove any observations with NA entries to create a new dataset. Then I used the dataset with no NA entries and estimation-validation split it. Finally, I used the rpart function to quickly create a model using the estimation data and all of its features.  
+
+```{r}
+# temp remove any observation with any missing data
+hd_trn_full = na.omit(hd_trn)
+
+# estimation-validation split the data
+set.seed(42)
+est_idx = createDataPartition(hd_trn_full$num, p = 0.80, list = TRUE)
+hd_est = hd_trn_full[est_idx$Resample1, ]
+hd_val = hd_trn_full[-est_idx$Resample1, ]
+
+# looking at response in estimation data
+table(hd_est$num)
+
+# establishing first baseline
+table(
+  actual = hd_val$num,
+  predicted = rep("v0", length(hd_val$num))
+)
+
+# fit our "first" model
+mod = rpart(num ~ ., data = hd_est)
+```
+
+To check the accuracy of the model, I created an actual versus predicted table using the validation data as the actual values and using the model created by the rpart function to predict the num feature, where v0 means no presence of heart disease and any other entry means some presence of heart disease. I used this table to then calculate the accuracy of the model.
+
+```{r}
+# establishing first model-based baseline
+table(
+  actual = hd_val$num,
+  predicted = predict(mod, hd_val, type = "class")
+)
+
+# calculate baseline accuracy
+mean(predict(mod, hd_val, type = "class") == hd_val$num)
+```
 
 ### Data
 
-Specifically describe the data and how it is used here.
+This data was taken from the UC Irvine Machine Learning Repository The hospitals that provided the data are Hungarian Institute of Cardiology in Budapest, University Hospital in Zurich, Switzerland, University Hospital in Basel, Switzerland and V.A. Medical Center in Long Beach. It should also be noted that this data was recored in 1988. This data contains 76 features, but all published experiments refer to using a subset of 14 of them.
+
+The 14 features are:
+
+1. age - age in years
+1. sex - sex (1 = male; 0 = female)
+1. cp -  cp: chest pain type -- Value 1: typical angina -- Value 2: atypical angina -- Value 3: non-anginal pain -- Value 4: asymptomatic
+1. trestbps - resting blood pressure (in mm Hg on admission to the hospital)
+1. chol - serum cholestoral in mg/dl
+1. fbs - (fasting blood sugar > 120 mg/dl) (1 = true; 0 = false)
+1. restecg - resting electrocardiographic results -- Value 0: normal -- Value 1: having ST-T wave abnormality (T wave inversions   and/or ST elevation or depression of > 0.05 mV)  -- Value 2: showing probable or definite left ventricular hypertrophy by Estes' criteria
+1. thalach - maximum heart rate achieved
+1. exang - exercise induced angina (1 = yes; 0 = no)
+1. oldpeak - ST depression induced by exercise relative to rest
+1. slope - slope: the slope of the peak exercise ST segment -- Value 1: upsloping -- Value 2: flat -- Value 3: downsloping
+1. ca - number of major vessels (0-3) colored by flourosopy
+1. thal - 3 = normal; 6 = fixed defect; 7 = reversable defect
+1. num (the predicted attribute) - diagnosis of heart disease (angiographic disease status) -- Value 0: < 50% diameter narrowing -- Value 1: > 50% diameter narrowing
 
 ### Modeling
 
-Discuss your modeling and validation strategy here.
+First, I removed any observations with NA entries from the training dataset, then used those observations to cross validate decision tree and k nearest neighbors models.  
+
+```{r}
+# temp remove any observation with any missing data
+hd_trn_full = na.omit(hd_trn)
+
+# with cross-validation, tune decision tree, knn
+
+
+cv_5 = trainControl(method = "cv", number = 5)
+
+hd_tree_tune = expand.grid(
+  cp = c(0, 0.0001, 0.001, 0.01, 0.1, 1)
+)
+
+hd_tree_mod = train(
+      form = num ~ .,
+      data = hd_trn_full,
+      method = "rpart",
+      trControl = cv_5,
+      tuneLength = 10
+)
+
+hd_knn_tune = expand.grid(
+  k = 1:100
+)
+
+hd_knn_mod = train(
+  form = num ~ .,
+  data = hd_trn_full,
+  method = "knn",
+  trControl = cv_5,
+  tuneGrid = hd_knn_tune
+)
+
+```
 
 ***
 
 ## Results
 
-State your results here.
+I found that the decision tree model had the highest accuracy, so I chose this as my best model with the highest accuracy being 0.627.
+
+```{r}
+hd_tree_mod
+```
 
 ***
 
 ## Discussion
 
-Discuss your results here.
+62% accuracy does not mean one should trust this model and depend on it to determine if there's a presence of heart disease. The data being used is from 1988, and the medical world seems to have changed very much since then. Anyways, if this model is used to predict any sort of presence of heart disease, there's a chance that the prediction could a false positive or false negative. If someone uses some of the features and the models predicts they do not have heart disease, that person should still be vigilant and suggest a small possibility that the model is not correct. On the other hand, if someone uses the model and it predicts they do have heart disease, then they should seek a cardiologist and professional assistance rather than depending on a prediction model.
 
 ***
 
 ## Appendix
 
-Place potential additional information here.
+* Angiography or arteriography - a medical imaging technique used to visualize the inside, or lumen, of blood vessels and organs of the body, with particular interest in the arteries, veins, and the heart chambers.
+
+* fluoroscopy - type of medical imaging that shows a continuous X-ray image on a monitor, much like an X-ray movie. During a fluoroscopy procedure, an X-ray beam is passed through the body.
+
+* electrocardiography - process of producing an electrocardiogram (ECG or EKG). It is a graph of voltage versus time of the electrical activity of the heart using electrodes placed on the skin.
